@@ -23,6 +23,7 @@ import {
     uploadProgramToHub,
 } from "./shared-extension";
 import { Command } from "./utils";
+import { LiveDataViewProvider } from "./views/live-telemetry-provider";
 
 let mpyWasm: Uint8Array | undefined;
 const supportedClients: vscode.QuickPickItem[] = [
@@ -123,8 +124,27 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     context.subscriptions.push(
+        vscode.commands.registerCommand("lego-spikeprime-mindstorms-vscode.showLiveTelemetry", async () => {
+            await vscode.commands.executeCommand(
+                "workbench.view.extension.legoRobotPanel"
+            );
+
+            await vscode.commands.executeCommand(
+                "legoLiveView.focus"
+            );
+        })
+    );
+
+    context.subscriptions.push(
         connectToHubCommand,
         uploadProgramCommand,
+    );
+    const provider = new LiveDataViewProvider(getClient);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            LiveDataViewProvider.viewType,
+            provider
+        )
     );
 }
 

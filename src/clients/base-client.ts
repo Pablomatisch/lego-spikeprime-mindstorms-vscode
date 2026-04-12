@@ -4,6 +4,9 @@ import { pack, unpack } from "../cobs";
 import { Logger } from "../logger";
 import { BaseMessage } from "../messages/base-message";
 import { ConsoleNotificationMessage } from "../messages/console-notification-message";
+import { DeviceNotificationMessage } from "../messages/device-notification";
+import { DeviceNotificationRequestMessage } from "../messages/device-notification-request";
+import { DeviceNotificationResponseMessage } from "../messages/device-notification-response";
 import { InfoResponseMessage } from "../messages/info-response-message";
 import { ProgramFlowNotificationMessage } from "../messages/program-flow-notification-message";
 import { ProgramFlowRequestMessage } from "../messages/program-flow-request-message";
@@ -16,6 +19,7 @@ import { TransferChunkResponseMessage } from "../messages/transfer-chunk-respons
 export abstract class BaseClient {
     public onClosed: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
     public onProgramRunningChanged: vscode.EventEmitter<boolean> = new vscode.EventEmitter<boolean>();
+    public onDeviceNotification: vscode.EventEmitter<DeviceNotificationMessage> = new vscode.EventEmitter<DeviceNotificationMessage>();
     public abstract get isConnectedIn(): boolean;
     public get firmwareVersion() {
         if (!this._infoResponse) {
@@ -79,6 +83,40 @@ export abstract class BaseClient {
         }
     }
 
+    public async startDeviceNotifications() {
+        const config = vscode.workspace.getConfiguration("legoSpikePrimeMindstorms");
+        const intervalMs = config.get<number>("telemetryInterval") ?? 100;
+        const response = await this.sendMessage<
+            DeviceNotificationRequestMessage,
+            DeviceNotificationResponseMessage
+        >(
+            new DeviceNotificationRequestMessage(intervalMs),
+            DeviceNotificationResponseMessage
+        );
+
+        if (!response.IsAckIn) {
+            throw new Error("Failed to start device notifications");
+        }
+
+        return response;
+    }
+
+    public async stopDeviceNotifications() {
+        const response = await this.sendMessage<
+            DeviceNotificationRequestMessage,
+            DeviceNotificationResponseMessage
+        >(
+            new DeviceNotificationRequestMessage(0),
+            DeviceNotificationResponseMessage
+        );
+
+        if (!response.IsAckIn) {
+            throw new Error("Failed to stop device notifications");
+        }
+
+        return response;
+    }
+
     protected abstract writeData(data: Uint8Array): Promise<void> | undefined;
 
     protected async sendMessage<T extends BaseMessage, U extends BaseMessage>(message: T, result: typeof BaseMessage): Promise<U> {
@@ -112,6 +150,9 @@ export abstract class BaseClient {
             else if (resultMessage instanceof ConsoleNotificationMessage) {
                 this._logger.log(resultMessage.message ?? "");
             }
+            else if (resultMessage instanceof DeviceNotificationMessage) {
+                this.onDeviceNotification.fire(resultMessage);
+            }
         }
         catch (e) {
             this._logger.error(`Error deserializing message: ${e}`);
@@ -131,6 +172,12 @@ function deserializeMessage(data: Uint8Array): [id: number, message: BaseMessage
     let message: BaseMessage;
 
     switch (messageId) {
+        case DeviceNotificationMessage.Id:
+            message = new DeviceNotificationMessage();
+            break;
+        case DeviceNotificationResponseMessage.Id:
+            message = new DeviceNotificationResponseMessage();
+            break;
         case InfoResponseMessage.Id:
             message = new InfoResponseMessage();
             break;
