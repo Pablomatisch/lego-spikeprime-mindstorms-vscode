@@ -24,7 +24,13 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
             }
         });
 
-        this._syncState();
+        webviewView.onDidChangeVisibility(() => {
+            if (webviewView.visible) {
+                this._render();
+            }
+        });
+
+        this._render();
     }
 
     public updateTelemetry(data: any) {
@@ -32,33 +38,20 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
 
         this._view.webview.postMessage({
             type: "telemetry",
-            payload: JSON.stringify(data, null, 2),
+            data,
         });
-
-        this._syncState();
-    }
-
-    public setConnected() {
-        this._postState(true);
-    }
-
-    public setDisconnected() {
-        this._postState(false);
     }
 
     public setClientStateChanged() {
-        this._syncState();
+        this._render();
     }
 
-    private _syncState() {
+    private _render() {
         const client = this.getClient();
-        this._postState(!!client?.isConnectedIn);
-    }
 
-    private _postState(connected: boolean) {
         this._view?.webview.postMessage({
             type: "state",
-            connected,
+            connected: !!client,
         });
     }
 
@@ -164,6 +157,16 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
                 const dot = document.getElementById("dot");
                 const statusText = document.getElementById("statusText");
 
+                const oldState = vscode.getState();
+                if (oldState) {
+                    if (oldState.data) {
+                        dataEl.textContent = oldState.data;
+                    }
+
+                    if (oldState.connected) {
+                        connectBtn.textContent = "Reconnect Hub";
+                    }
+                }
 
                 connectBtn.addEventListener("click", () => {
                     vscode.postMessage({ type: "connect" });
@@ -173,7 +176,14 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
                     const msg = event.data;
 
                     if (msg.type === "telemetry") {
-                        dataEl.textContent = msg.payload;
+                        const text = JSON.stringify(msg.data, null, 2);
+
+                        dataEl.textContent = text;
+
+                        vscode.setState({
+                            data: text,
+                            connected: true
+                        });
                     }
 
                     if (msg.type === "state") {
@@ -188,6 +198,12 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
                         }
                     }
                 });
+                if (!oldState) {
+                    vscode.setState({
+                        data: "No data yet...",
+                        connected: false
+                    });
+                }
             </script>
         </body>
         </html>`;

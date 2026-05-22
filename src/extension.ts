@@ -26,9 +26,6 @@ import { Command } from "./utils";
 import { LiveDataViewProvider } from "./views/live-telemetry-provider";
 
 let mpyWasm: Uint8Array | undefined;
-
-let provider: LiveDataViewProvider;
-
 const supportedClients: vscode.QuickPickItem[] = [
     { label: Client.Ble },
     { label: Client.Usb },
@@ -48,14 +45,7 @@ export function activate(context: vscode.ExtensionContext) {
 
     registerSharedCommands(context);
 
-    provider = new LiveDataViewProvider(getClient);
-
-    context.subscriptions.push(
-        vscode.window.registerWebviewViewProvider(
-            LiveDataViewProvider.viewType,
-            provider,
-        ),
-    );
+    const provider = new LiveDataViewProvider(getClient);
 
     const connectToHubCommand = vscode.commands.registerCommand(
         Command.ConnectToHub,
@@ -100,8 +90,20 @@ export function activate(context: vscode.ExtensionContext) {
                 );
 
                 await onHubConnected();
-                onHubConnectedHook();
-            } catch (e) {
+
+                getClient()!.onDeviceNotification.event((msg) => {
+                    provider.updateTelemetry(msg.devices);
+                });
+
+                getClient()!.onClosed.event(() => {
+                    provider.setClientStateChanged();
+                });
+
+                await getClient()!.startDeviceNotifications();
+
+                provider.setClientStateChanged();
+            }
+            catch (e) {
                 console.error(e);
                 vscode.window.showErrorMessage(
                     "Connecting to Hub Failed!" +
@@ -143,7 +145,8 @@ export function activate(context: vscode.ExtensionContext) {
                         void startProgramInSlot(programInfo.slotId);
                     }, 250);
                 }
-            } catch (e) {
+            }
+            catch (e) {
                 console.error(e);
                 vscode.window.showErrorMessage(
                     "Program Upload Failed!" +
@@ -166,25 +169,15 @@ export function activate(context: vscode.ExtensionContext) {
         ),
     );
 
-    context.subscriptions.push(connectToHubCommand, uploadProgramCommand);
-}
-
-function onHubConnectedHook() {
-    const client = getClient();
-
-    if (!client) return;
-
-    client.onDeviceNotification.event((msg) => {
-        provider?.updateTelemetry(msg);
-    });
-    if (client) {
-        client.onClosed.event(() => {
-            provider?.setDisconnected();
-        });
-    }
-
-    void client.startDeviceNotifications();
-    provider?.setConnected();
+    context.subscriptions.push(
+        connectToHubCommand,
+        uploadProgramCommand,
+        vscode.window.registerWebviewViewProvider(
+            LiveDataViewProvider.viewType,
+            provider,
+            { webviewOptions: { retainContextWhenHidden: true } },
+        ),
+    );
 }
 
 // this method is called when your extension is deactivated
@@ -216,9 +209,9 @@ async function performUploadProgram(
         );
         let assembledFilePath = isSaveFileToUploadIn
             ? path.join(
-                  path.dirname(currentlyOpenTabFilePath),
-                  `${currentlyOpenTabFileName}.assembled.py`,
-              )
+                path.dirname(currentlyOpenTabFilePath),
+                `${currentlyOpenTabFileName}.assembled.py`,
+            )
             : path.join(os.tmpdir(), `${v7()}.py`);
 
         fs.writeFileSync(assembledFilePath, assembledFile!, "utf8");
@@ -234,7 +227,8 @@ async function performUploadProgram(
                     // Remove previous temp assembled file
                     try {
                         fs.rmSync(assembledFilePath);
-                    } catch {
+                    }
+                    catch {
                         // Ignore error if error occurs while deleting the file
                     }
                 }
@@ -267,7 +261,8 @@ async function performUploadProgram(
         if (customPreprocessorPath || !isSaveFileToUploadIn) {
             try {
                 fs.rmSync(assembledFilePath);
-            } catch {
+            }
+            catch {
                 // Ignore error if error occurs while deleting the file
             }
         }
@@ -320,7 +315,8 @@ function assembleFile(filePath: string): Uint8Array | undefined {
                 const includedContentSplitted = includedContent.split("\n");
                 assembledLines.splice(index, 0, ...includedContentSplitted);
                 index--;
-            } catch (includeError) {
+            }
+            catch (includeError) {
                 vscode.window.showErrorMessage(
                     "Error reading included file:" + includeError,
                 );
@@ -331,7 +327,8 @@ function assembleFile(filePath: string): Uint8Array | undefined {
         const extendedBuffer = Buffer.from(extendedContent, "utf-8");
 
         return new Uint8Array(extendedBuffer);
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error extending file:", error);
         vscode.window.showErrorMessage("Error extending file: " + error);
         return undefined;
@@ -388,7 +385,8 @@ function executeCustomPreprocessor(
                 reject(
                     new Error(`Custom preprocessor exited with code ${code}`),
                 );
-            } else {
+            }
+            else {
                 resolve(preprocessedFilePath);
             }
         });

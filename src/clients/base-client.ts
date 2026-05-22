@@ -17,9 +17,12 @@ import { TransferChunkRequestMessage } from "../messages/transfer-chunk-request-
 import { TransferChunkResponseMessage } from "../messages/transfer-chunk-response-message";
 
 export abstract class BaseClient {
-    public onClosed: vscode.EventEmitter<void> = new vscode.EventEmitter<void>();
-    public onProgramRunningChanged: vscode.EventEmitter<boolean> = new vscode.EventEmitter<boolean>();
-    public onDeviceNotification: vscode.EventEmitter<DeviceNotificationMessage> = new vscode.EventEmitter<DeviceNotificationMessage>();
+    public onClosed: vscode.EventEmitter<void> =
+        new vscode.EventEmitter<void>();
+    public onProgramRunningChanged: vscode.EventEmitter<boolean> =
+        new vscode.EventEmitter<boolean>();
+    public onDeviceNotification: vscode.EventEmitter<DeviceNotificationMessage> =
+        new vscode.EventEmitter<DeviceNotificationMessage>();
     public abstract get isConnectedIn(): boolean;
     public get firmwareVersion() {
         if (!this._infoResponse) {
@@ -43,7 +46,13 @@ export abstract class BaseClient {
     }
 
     protected _logger: Logger;
-    protected _pendingMessagesPromises = new Map<number, [(result: BaseMessage | PromiseLike<BaseMessage>) => void, (e: string) => void]>();
+    protected _pendingMessagesPromises = new Map<
+        number,
+        [
+            (result: BaseMessage | PromiseLike<BaseMessage>) => void,
+            (e: string) => void,
+        ]
+    >();
     protected _infoResponse: InfoResponseMessage | undefined;
 
     constructor(logger: Logger) {
@@ -57,12 +66,21 @@ export abstract class BaseClient {
     public abstract disconnect(): Promise<void>;
 
     public async startStopProgram(slot: number, isStopIn = false) {
-        const response = await this.sendMessage<ProgramFlowRequestMessage, ProgramFlowResponseMessage>(new ProgramFlowRequestMessage(slot, isStopIn), ProgramFlowResponseMessage);
+        const response = await this.sendMessage<
+            ProgramFlowRequestMessage,
+            ProgramFlowResponseMessage
+        >(
+            new ProgramFlowRequestMessage(slot, isStopIn),
+            ProgramFlowResponseMessage,
+        );
         return response.IsAckIn;
     }
 
     public async startFileUpload(fileName: string, slot: number, crc: number) {
-        const uploadResponse = await this.sendMessage<StartFileUploadRequestMessage, StartFileUploadResponseMessage>(
+        const uploadResponse = await this.sendMessage<
+            StartFileUploadRequestMessage,
+            StartFileUploadResponseMessage
+        >(
             new StartFileUploadRequestMessage(fileName, slot, crc),
             StartFileUploadResponseMessage,
         );
@@ -73,7 +91,10 @@ export abstract class BaseClient {
     }
 
     public async transferChunk(chunk: Uint8Array, runningCrc: number) {
-        const response = await this.sendMessage<TransferChunkRequestMessage, TransferChunkResponseMessage>(
+        const response = await this.sendMessage<
+            TransferChunkRequestMessage,
+            TransferChunkResponseMessage
+        >(
             new TransferChunkRequestMessage(runningCrc, chunk),
             TransferChunkResponseMessage,
         );
@@ -84,14 +105,16 @@ export abstract class BaseClient {
     }
 
     public async startDeviceNotifications() {
-        const config = vscode.workspace.getConfiguration("legoSpikePrimeMindstorms");
+        const config = vscode.workspace.getConfiguration(
+            "legoSpikePrimeMindstorms",
+        );
         const intervalMs = config.get<number>("telemetryInterval") ?? 100;
         const response = await this.sendMessage<
             DeviceNotificationRequestMessage,
             DeviceNotificationResponseMessage
         >(
             new DeviceNotificationRequestMessage(intervalMs),
-            DeviceNotificationResponseMessage
+            DeviceNotificationResponseMessage,
         );
 
         if (!response.IsAckIn) {
@@ -107,7 +130,7 @@ export abstract class BaseClient {
             DeviceNotificationResponseMessage
         >(
             new DeviceNotificationRequestMessage(0),
-            DeviceNotificationResponseMessage
+            DeviceNotificationResponseMessage,
         );
 
         if (!response.IsAckIn) {
@@ -119,7 +142,10 @@ export abstract class BaseClient {
 
     protected abstract writeData(data: Uint8Array): Promise<void> | undefined;
 
-    protected async sendMessage<T extends BaseMessage, U extends BaseMessage>(message: T, result: typeof BaseMessage): Promise<U> {
+    protected async sendMessage<T extends BaseMessage, U extends BaseMessage>(
+        message: T,
+        result: typeof BaseMessage,
+    ): Promise<U> {
         const payload = pack(message.serialize());
         const resultPromise = new Promise<BaseMessage>((resolve, reject) => {
             this._pendingMessagesPromises.set(result.Id, [resolve, reject]);
@@ -144,13 +170,18 @@ export abstract class BaseClient {
                 resolve(resultMessage);
                 this._pendingMessagesPromises.delete(messageId);
             }
-            else if (resultMessage instanceof ProgramFlowNotificationMessage) {
+            else if (
+                resultMessage instanceof ProgramFlowNotificationMessage
+            ) {
                 this.onProgramRunningChanged.fire(!resultMessage.isStopIn!);
             }
             else if (resultMessage instanceof ConsoleNotificationMessage) {
                 this._logger.log(resultMessage.message ?? "");
             }
             else if (resultMessage instanceof DeviceNotificationMessage) {
+                this._logger.log(
+                    `[telemetry] Received device notification with ${resultMessage.devices.length} device(s)`,
+                );
                 this.onDeviceNotification.fire(resultMessage);
             }
         }
@@ -167,7 +198,9 @@ export abstract class BaseClient {
     }
 }
 
-function deserializeMessage(data: Uint8Array): [id: number, message: BaseMessage] {
+function deserializeMessage(
+    data: Uint8Array,
+): [id: number, message: BaseMessage] {
     const messageId = data[0];
     let message: BaseMessage;
 

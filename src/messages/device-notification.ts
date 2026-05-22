@@ -1,7 +1,7 @@
 import { BaseMessage } from "./base-message";
 
 export class DeviceNotificationMessage extends BaseMessage {
-    public static readonly Id = 0x3C;
+    public static readonly Id = 0x3c;
 
     public payloadSize: number | undefined;
     public devices: any[] = [];
@@ -29,27 +29,27 @@ export class DeviceNotificationMessage extends BaseMessage {
                     offset = this.parseMatrix(view, offset);
                     break;
 
-                case 0x0A:
+                case 0x0a:
                     offset = this.parseMotor(view, offset);
                     break;
 
-                case 0x0B:
+                case 0x0b:
                     offset = this.parseForceSensor(view, offset);
                     break;
 
-                case 0x0C:
+                case 0x0c:
                     offset = this.parseColorSensor(view, offset);
                     break;
 
-                case 0x0D:
+                case 0x0d:
                     offset = this.parseDistanceSensor(view, offset);
                     break;
 
-                case 0x0E:
+                case 0x0e:
                     offset = this.parse3x3Matrix(view, offset);
                     break;
                 default:
-                    break;
+                    return;
             }
         }
     }
