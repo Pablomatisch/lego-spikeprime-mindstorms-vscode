@@ -18,11 +18,13 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
 
         webviewView.webview.onDidReceiveMessage(async (msg) => {
             if (msg.type === "connect") {
-                vscode.commands.executeCommand("lego-spikeprime-mindstorms-vscode.connectToHub");
+                vscode.commands.executeCommand(
+                    "lego-spikeprime-mindstorms-vscode.connectToHub",
+                );
             }
         });
 
-        this._render();
+        this._syncState();
     }
 
     public updateTelemetry(data: any) {
@@ -30,20 +32,33 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
 
         this._view.webview.postMessage({
             type: "telemetry",
-            data,
+            payload: JSON.stringify(data, null, 2),
         });
+
+        this._syncState();
+    }
+
+    public setConnected() {
+        this._postState(true);
+    }
+
+    public setDisconnected() {
+        this._postState(false);
     }
 
     public setClientStateChanged() {
-        this._render();
+        this._syncState();
     }
 
-    private _render() {
+    private _syncState() {
         const client = this.getClient();
+        this._postState(!!client?.isConnectedIn);
+    }
 
+    private _postState(connected: boolean) {
         this._view?.webview.postMessage({
             type: "state",
-            connected: !!client,
+            connected,
         });
     }
 
@@ -55,13 +70,90 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>LEGO Live Data</title>
+            <style>
+                body {
+                    font-family: var(--vscode-font-family);
+                    color: var(--vscode-foreground);
+                    padding: 12px;
+                }
+
+                h1 {
+                    font-size: 14px;
+                    font-weight: 600;
+                    margin-bottom: 12px;
+                }
+
+                .card {
+                    background-color: var(--vscode-editorWidget-background);
+                    border: 1px solid var(--vscode-widget-border);
+                    border-radius: 6px;
+                    padding: 10px;
+                    margin-bottom: 10px;
+                }
+
+                .status {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-weight: 500;
+                }
+
+                .dot {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    background: var(--vscode-errorForeground);
+                }
+
+                .dot.connected {
+                    background: var(--vscode-testing-iconPassed);
+                }
+
+                pre {
+                    font-family: var(--vscode-editor-font-family);
+                    font-size: 12px;
+                    background: var(--vscode-textCodeBlock-background);
+                    padding: 8px;
+                    border-radius: 4px;
+                    overflow: auto;
+                }
+
+                button {
+                    background: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    border: none;
+                    padding: 6px 10px;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    margin-top: 8px;
+                }
+
+                button:hover {
+                    background: var(--vscode-button-hoverBackground);
+                }
+
+                button:active {
+                    transform: translateY(1px);
+                }
+            </style>
         </head>
+
         <body>
-            <h1>LEGO Live Data</h1>
+            <h1>LEGO Live Telemetry</h1>
 
-            <button id="connectBtn">Connect Hub</button>
+        <div class="card">
+            <div class="status">
+                <div id="dot" class="dot"></div>
+                <span id="statusText">Disconnected</span>
+            </div>
 
-            <pre id="data">No data yet...</pre>
+            <button id="connectBtn" style="margin-top:8px;">Connect Hub</button>
+        </div>
+
+        <div class="card">
+            <h3>Telemetry</h3>
+            <pre id="data">Waiting for data...</pre>
+        </div>
 
             <script>
                 const vscode = acquireVsCodeApi();
@@ -69,57 +161,33 @@ export class LiveDataViewProvider implements vscode.WebviewViewProvider {
                 const connectBtn = document.getElementById("connectBtn");
                 const dataEl = document.getElementById("data");
 
-                // 🔁 Restore previous state
-                const oldState = vscode.getState();
-                if (oldState) {
-                    if (oldState.data) {
-                        dataEl.textContent = oldState.data;
-                    }
+                const dot = document.getElementById("dot");
+                const statusText = document.getElementById("statusText");
 
-                    if (oldState.connected) {
-                        connectBtn.textContent = "Reconnect Hub";
-                    }
-                }
 
-                // 🔘 Button click
                 connectBtn.addEventListener("click", () => {
                     vscode.postMessage({ type: "connect" });
                 });
 
-                // 📩 Receive messages from extension (for future telemetry)
                 window.addEventListener("message", (event) => {
                     const msg = event.data;
 
                     if (msg.type === "telemetry") {
-                        const text = JSON.stringify(msg.payload, null, 2);
-
-                        // update UI
-                        dataEl.textContent = text;
-
-                        // 💾 persist state
-                        vscode.setState({
-                            data: text,
-                            connected: true
-                        });
+                        dataEl.textContent = msg.payload;
                     }
 
-                    if (msg.type === "connected") {
-                        connectBtn.textContent = "Connected";
-                        
-                        vscode.setState({
-                            ...vscode.getState(),
-                            connected: true
-                        });
+                    if (msg.type === "state") {
+                        if (msg.connected) {
+                            dot.classList.add("connected");
+                            statusText.textContent = "Connected";
+                            connectBtn.textContent = "Reconnect";
+                        } else {
+                            dot.classList.remove("connected");
+                            statusText.textContent = "Disconnected";
+                            connectBtn.textContent = "Connect Hub";
+                        }
                     }
                 });
-
-                // 🧪 Initial state fallback (first load)
-                if (!oldState) {
-                    vscode.setState({
-                        data: "No data yet...",
-                        connected: false
-                    });
-                }
             </script>
         </body>
         </html>`;
